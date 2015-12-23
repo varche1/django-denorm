@@ -1,16 +1,17 @@
-import django
-from django.test import TestCase
+from django.db import connection
+from django.test import TestCase, TransactionTestCase
 from django.contrib.contenttypes.models import ContentType
+from django.core.management import call_command
 
 from django.contrib.auth import get_user_model
 User = get_user_model()
 
 import denorm
 from denorm import denorms
-import models
+from test_app import models
 
 # Use all but denorms in FailingTriggers models by default
-failingdenorms = denorms.alldenorms
+failingdenorms = denorms.get_alldenorms()
 denorms.alldenorms = [d for d in failingdenorms if d.model not in (models.FailingTriggersModelA, models.FailingTriggersModelB)]
 
 
@@ -23,7 +24,7 @@ class TestTriggers(TestCase):
         """
         # save and restore alldenorms
         # test will fail if it's raising an exception
-        alldenorms = denorms.alldenorms
+        alldenorms = denorms.get_alldenorms()
         denorms.alldenorms = failingdenorms
         try:
             denorms.install_triggers()
@@ -72,7 +73,7 @@ class TestAbstract(TestCase):
         self.assertEqual("Eggs and onion", d1.eggs)
 
 
-class TestSkip(TestCase):
+class TestSkip(TransactionTestCase):
     """
     Tests for the skip feature.
     """
@@ -113,7 +114,7 @@ class TestSkip(TestCase):
         denorm.flush()
 
 
-class TestDenormalisation(TestCase):
+class TestDenormalisation(TransactionTestCase):
     """
     Tests for the denormalisation fields.
     """
@@ -555,7 +556,7 @@ class TestDenormalisation(TestCase):
         self.assertNotEqual(ck1, m1.cachekey)
 
 
-if not hasattr(django.db.backend, 'sqlite3'):
+if connection.vendor != "sqlite":
     class TestFilterCount(TestCase):
         """
         Tests for the filtered count feature.
@@ -674,3 +675,19 @@ if not hasattr(django.db.backend, 'sqlite3'):
             item.save()
             master = models.FilterSumModel.objects.get(pk=master.pk)
             self.assertEqual(master.active_item_sum, 8)
+
+
+class CommandsTestCase(TransactionTestCase):
+    def test_denorm_daemon(self):
+        " Test denorm_daemon command."
+
+        args = []
+        opts = {}
+        call_command('denorm_daemon', *args, **opts)
+
+    def test_makemigrations(self):
+        " Test makemigrations command."
+
+        args = []
+        opts = {}
+        call_command('makemigrations', *args, **opts)

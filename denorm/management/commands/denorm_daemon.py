@@ -3,16 +3,31 @@ import sys
 from time import sleep
 from optparse import make_option
 
-from django.core.management.base import NoArgsCommand
+try:  # Django>=1.8
+    from django.core.management.base import BaseCommand
+except ImportError:
+    from django.core.management.base import NoArgsCommand as BaseCommand
 from django.db import transaction
 
 from denorm import denorms
 
 PID_FILE = "/tmp/django-denorm-daemon-pid"
 
+if 'set_autocommit' in dir(transaction):
+    def commit_manually(fn):  # replacement of transaction.commit_manually decorator removed in Django 1.6
+        def _commit_manually(*args, **kwargs):
+            transaction.set_autocommit(False)
+            res = fn(*args, **kwargs)
+            transaction.commit()
+            transaction.set_autocommit(True)
+            return res
+        return _commit_manually
+else:  # Django <= 1.5
+    commit_manually = transaction.commit_manually
 
-class Command(NoArgsCommand):
-    option_list = NoArgsCommand.option_list + (
+
+class Command(BaseCommand):
+    option_list = BaseCommand.option_list + (
         make_option(
             '-n',
             action='store_true',
@@ -40,20 +55,20 @@ class Command(NoArgsCommand):
 
     def pid_exists(self, pidfile):
         try:
-            pid = int(file(pidfile, 'r').read())
+            pid = int(open(pidfile, 'r').read())
             os.kill(pid, 0)
             self.stderr.write(self.style.ERROR("daemon already running as pid: %s\n" % (pid,)))
             return True
-        except OSError, err:
+        except OSError as err:
             return err.errno == os.errno.EPERM
-        except IOError, err:
+        except IOError as err:
             if err.errno == 2:
                 return False
             else:
                 raise
 
-    @transaction.commit_manually
-    def handle_noargs(self, **options):
+    @commit_manually
+    def handle(self, **options):
         foreground = options['foreground']
         interval = options['interval']
         pidfile = options['pidfile']
@@ -73,3 +88,6 @@ class Command(NoArgsCommand):
             except KeyboardInterrupt:
                 transaction.commit()
                 sys.exit()
+
+    def handle_noargs(self, **options):  # Django<=1.8
+        return self.handle(options)
