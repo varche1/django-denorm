@@ -4,7 +4,7 @@ from setuptools import setup
 
 setup(
     name='django-denorm',
-    version='1.0.0wf',
+    version='1.0.0+whyfly.1',
     description='Denormalization magic for Django',
     long_description='django-denorm is a Django application to provide automatic management of denormalized database fields.',
     author=', '.join((
